@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "780386061070",
+    "project_id": "pikmin-postcard-book",
+    "storage_bucket": "pikmin-postcard-book.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:780386061070:android:8df259d46b7701933f655f",
+        "android_client_info": {
+          "package_name": "com.example.pikmin_postcard_book"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCJ2FCtv3YOeMhe2GUwVDwTIf_oNflFQA0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
