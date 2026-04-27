@@ -23,10 +23,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return ios;
       case TargetPlatform.macOS:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for macos - '
@@ -66,4 +63,15 @@ class DefaultFirebaseOptions {
     projectId: 'pikmin-postcard-book',
     storageBucket: 'pikmin-postcard-book.firebasestorage.app',
   );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyDECXT1AeGJ5MpKgQJud0LaZ8LZkhPcs9Q',
+    appId: '1:780386061070:ios:310eb3ef6e3325a43f655f',
+    messagingSenderId: '780386061070',
+    projectId: 'pikmin-postcard-book',
+    databaseURL: 'https://pikmin-postcard-book-default-rtdb.asia-southeast1.firebasedatabase.app',
+    storageBucket: 'pikmin-postcard-book.firebasestorage.app',
+    iosBundleId: 'com.admin.pikminPostcardBook',
+  );
+
 }

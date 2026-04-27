@@ -1,7 +1,8 @@
+import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 
@@ -16,20 +17,163 @@ class PostcardService {
   static const int _initialMaxDimension = 1400;
   static const int _minimumDimension = 400;
   static const int _thumbnailSize = 600;
+  static const String _metadataDocId = 'app_metadata';
 
   final FirebaseFirestore _firestore;
 
   CollectionReference<Map<String, dynamic>> get _postcardsCollection =>
       _firestore.collection('postcards');
 
+  DocumentReference<Map<String, dynamic>> get _globalTagsDoc =>
+      _postcardsCollection
+          .doc(_metadataDocId)
+          .collection('app')
+          .doc('global_tags');
+
+  String get _platformKey {
+    if (kIsWeb) {
+      return 'web';
+    }
+
+    switch (defaultTargetPlatform) {
+      case TargetPlatform.android:
+        return 'android';
+      case TargetPlatform.iOS:
+        return 'ios';
+      default:
+        return 'web';
+    }
+  }
+
+  CollectionReference<Map<String, dynamic>> get _ownedItemsCollection =>
+      _firestore
+          .collection('owned_status')
+          .doc(_platformKey)
+          .collection('items');
+
+  DocumentReference<Map<String, dynamic>> _ownedItemDoc(String postcardId) {
+    return _ownedItemsCollection.doc(postcardId);
+  }
+
+  DocumentReference<Map<String, dynamic>> _ownedItemDocForPlatform(
+    String platform,
+    String postcardId,
+  ) {
+    return _firestore
+        .collection('owned_status')
+        .doc(platform)
+        .collection('items')
+        .doc(postcardId);
+  }
+
+  Stream<List<String>> watchAvailableTags() {
+    return _globalTagsDoc.snapshots().map((snapshot) {
+      final data = snapshot.data() ?? <String, dynamic>{};
+      final rawTags = (data['tags'] as List<dynamic>?)?.cast<Object?>();
+      final merged = <String>[
+        ...kBuiltInPostcardTags,
+        ...Postcard.normalizeTags(rawTags),
+      ];
+      return Postcard.normalizeTags(merged);
+    });
+  }
+
+  Future<void> _writeGlobalTags(List<String> incomingTags) async {
+    final normalizedIncoming = Postcard.normalizeTags(incomingTags);
+    if (normalizedIncoming.isEmpty) {
+      return;
+    }
+
+    final snapshot = await _globalTagsDoc.get();
+    final existingData = snapshot.data() ?? <String, dynamic>{};
+    final existingTags = Postcard.normalizeTags(
+      (existingData['tags'] as List<dynamic>?)?.cast<Object?>(),
+    );
+
+    final mergedTags = Postcard.normalizeTags([
+      ...existingTags,
+      ...normalizedIncoming,
+    ]);
+
+    await _globalTagsDoc.set({
+      'tags': mergedTags,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> addGlobalTag(String tag) async {
+    final normalized = Postcard.normalizeTag(tag);
+    if (normalized.isEmpty) {
+      return;
+    }
+
+    await _writeGlobalTags([normalized]);
+  }
+
+  Future<void> _syncGlobalTags(List<String> tags) async {
+    await _writeGlobalTags(tags);
+  }
+
   Stream<List<Postcard>> watchPostcards() {
-    return _postcardsCollection
+    final postcardsStream = _postcardsCollection
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map(
-          (snapshot) =>
-              snapshot.docs.map(Postcard.fromDocument).toList(growable: false),
+          (snapshot) => snapshot.docs
+              .where((doc) => doc.id != _metadataDocId)
+              .map(Postcard.fromDocument)
+              .toList(growable: false),
         );
+
+    final ownedStream = _ownedItemsCollection.snapshots().map((snapshot) {
+      final ownedIds = <String>{};
+      for (final doc in snapshot.docs) {
+        final data = doc.data();
+        final owned = (data['owned'] as bool?) ?? true;
+        if (owned) {
+          ownedIds.add(doc.id);
+        }
+      }
+      return ownedIds;
+    });
+
+    late final StreamSubscription<List<Postcard>> postcardsSubscription;
+    late final StreamSubscription<Set<String>> ownedSubscription;
+
+    var latestPostcards = const <Postcard>[];
+    var latestOwnedIds = <String>{};
+
+    late final StreamController<List<Postcard>> controller;
+
+    void emitMerged() {
+      final merged = latestPostcards
+          .map(
+            (postcard) =>
+                postcard.copyWith(owned: latestOwnedIds.contains(postcard.id)),
+          )
+          .toList(growable: false);
+      controller.add(merged);
+    }
+
+    controller = StreamController<List<Postcard>>(
+      onListen: () {
+        postcardsSubscription = postcardsStream.listen((postcards) {
+          latestPostcards = postcards;
+          emitMerged();
+        }, onError: controller.addError);
+
+        ownedSubscription = ownedStream.listen((ownedIds) {
+          latestOwnedIds = ownedIds;
+          emitMerged();
+        }, onError: controller.addError);
+      },
+      onCancel: () async {
+        await postcardsSubscription.cancel();
+        await ownedSubscription.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 
   Future<void> addPostcard({
@@ -37,21 +181,25 @@ class PostcardService {
     required PostcardCategory category,
     required double lat,
     required double lng,
+    required List<String> tags,
     required XFile imageFile,
   }) async {
     final doc = _postcardsCollection.doc();
     final prepared = await _prepareImages(imageFile);
+    final normalizedTags = Postcard.normalizeTags(tags);
 
     await doc.set({
       'name': name,
       'category': category.firestoreValue,
-      'owned': false,
       'lat': lat,
       'lng': lng,
+      'tags': normalizedTags,
       'imageBytes': Blob(prepared.imageBytes),
       'thumbnailBytes': Blob(prepared.thumbnailBytes),
       'createdAt': FieldValue.serverTimestamp(),
     });
+
+    await _syncGlobalTags(normalizedTags);
   }
 
   Future<void> updatePostcard({
@@ -60,17 +208,31 @@ class PostcardService {
     required PostcardCategory category,
     required double lat,
     required double lng,
+    required List<String> tags,
   }) async {
+    final normalizedTags = Postcard.normalizeTags(tags);
+
     await _postcardsCollection.doc(id).update({
       'name': name,
       'category': category.firestoreValue,
       'lat': lat,
       'lng': lng,
+      'tags': normalizedTags,
     });
+
+    await _syncGlobalTags(normalizedTags);
   }
 
   Future<void> setOwned({required String id, required bool owned}) async {
-    await _postcardsCollection.doc(id).update({'owned': owned});
+    if (owned) {
+      await _ownedItemDoc(id).set({
+        'owned': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      return;
+    }
+
+    await _ownedItemDoc(id).delete();
   }
 
   Future<void> deletePostcards(List<String> ids) async {
@@ -79,9 +241,15 @@ class PostcardService {
     }
 
     final batch = _firestore.batch();
+    const platforms = <String>['android', 'ios', 'web'];
+
     for (final id in ids) {
       batch.delete(_postcardsCollection.doc(id));
+      for (final platform in platforms) {
+        batch.delete(_ownedItemDocForPlatform(platform, id));
+      }
     }
+
     await batch.commit();
   }
 
@@ -92,7 +260,7 @@ class PostcardService {
     final decodedImage = img.decodeImage(sourceBytes);
 
     if (decodedImage == null) {
-      throw Exception('無法讀取圖片，請改選其他圖片。');
+      throw Exception('無法讀取圖片，請重新選擇。');
     }
 
     final oriented = img.bakeOrientation(decodedImage);
@@ -117,7 +285,7 @@ class PostcardService {
       } else {
         final nextLongestSide = (_longestSide(workingImage) * 0.85).round();
         if (nextLongestSide < _minimumDimension) {
-          throw Exception('圖片太大，請換一張較小的圖片。');
+          throw Exception('圖片壓縮後仍過大，請換一張較小的圖片。');
         }
 
         workingImage = _resizeToLongestSide(workingImage, nextLongestSide);

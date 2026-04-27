@@ -23,8 +23,8 @@ class MapLauncherService {
   }
 
   Future<void> openBlueMap({required double lat, required double lng}) async {
-    if (kIsWeb) {
-      throw Exception('藍色地圖只支援 Android。');
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      throw Exception('藍色地圖目前僅支援 Android。');
     }
 
     try {

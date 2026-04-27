@@ -2,6 +2,32 @@ import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+const List<String> kBuiltInPostcardTags = <String>[
+  '動物',
+  '星空',
+  '極光',
+  '雪景',
+  '壁畫',
+  '藝人',
+  '山景',
+  '海景',
+  '建築物',
+  '日本',
+  '櫻花',
+  '夜景',
+  '山丘',
+  '韓國',
+  '橋梁',
+  '動漫',
+  '吉祥物',
+  '植物',
+];
+
+const Map<String, String> kPostcardTagAliases = <String, String>{
+  '房子': '建築物',
+  '畫作': '壁畫',
+};
+
 enum PostcardCategory {
   mushroom('mushroom', '菇點'),
   flower('flower', '花點'),
@@ -34,6 +60,7 @@ class Postcard {
     required this.thumbnailBytes,
     required this.imageUrl,
     required this.createdAt,
+    this.tags = const <String>[],
   });
 
   final String id;
@@ -46,6 +73,7 @@ class Postcard {
   final Uint8List? thumbnailBytes;
   final String? imageUrl;
   final DateTime? createdAt;
+  final List<String> tags;
 
   String get formattedLat => lat.toStringAsFixed(10);
   String get formattedLng => lng.toStringAsFixed(10);
@@ -66,6 +94,7 @@ class Postcard {
     Uint8List? thumbnailBytes,
     String? imageUrl,
     DateTime? createdAt,
+    List<String>? tags,
   }) {
     return Postcard(
       id: id ?? this.id,
@@ -78,6 +107,7 @@ class Postcard {
       thumbnailBytes: thumbnailBytes ?? this.thumbnailBytes,
       imageUrl: imageUrl ?? this.imageUrl,
       createdAt: createdAt ?? this.createdAt,
+      tags: tags ?? this.tags,
     );
   }
 
@@ -98,6 +128,7 @@ class Postcard {
       thumbnailBytes: _blobToBytes(data['thumbnailBytes']),
       imageUrl: (data['imageUrl'] as String?)?.trim(),
       createdAt: createdAt is Timestamp ? createdAt.toDate() : null,
+      tags: normalizeTags((data['tags'] as List<dynamic>?)?.cast<Object?>()),
     );
   }
 
@@ -109,5 +140,34 @@ class Postcard {
       return value;
     }
     return null;
+  }
+
+  static String normalizeTag(String input) {
+    final normalized = input
+        .trim()
+        .replaceFirst(RegExp(r'^#+'), '')
+        .replaceAll(' ', '');
+    return kPostcardTagAliases[normalized] ?? normalized;
+  }
+
+  static String displayTag(String tag) {
+    final normalized = normalizeTag(tag);
+    return normalized.isEmpty ? '#' : '#$normalized';
+  }
+
+  static List<String> normalizeTags(Iterable<Object?>? rawTags) {
+    final seen = <String>{};
+    final normalizedTags = <String>[];
+
+    for (final rawTag in rawTags ?? const <Object?>[]) {
+      final normalized = normalizeTag(rawTag?.toString() ?? '');
+      if (normalized.isEmpty || seen.contains(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      normalizedTags.add(normalized);
+    }
+
+    return normalizedTags;
   }
 }

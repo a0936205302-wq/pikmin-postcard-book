@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../models/postcard.dart';
 import '../services/postcard_service.dart';
+import '../widgets/postcard_tag_editor.dart';
 
 class AddPostcardPage extends StatefulWidget {
   const AddPostcardPage({super.key, required this.postcardService});
@@ -24,6 +25,7 @@ class _AddPostcardPageState extends State<AddPostcardPage> {
   XFile? _selectedImage;
   Uint8List? _selectedImageBytes;
   PostcardCategory _selectedCategory = PostcardCategory.mushroom;
+  List<String> _selectedTags = <String>[];
   bool _isSaving = false;
 
   @override
@@ -44,7 +46,6 @@ class _AddPostcardPageState extends State<AddPostcardPage> {
     }
 
     final bytes = await image.readAsBytes();
-
     if (!mounted) {
       return;
     }
@@ -64,7 +65,6 @@ class _AddPostcardPageState extends State<AddPostcardPage> {
 
     final lat = double.tryParse(parts[0].trim());
     final lng = double.tryParse(parts[1].trim());
-
     if (lat == null || lng == null) {
       return null;
     }
@@ -81,7 +81,7 @@ class _AddPostcardPageState extends State<AddPostcardPage> {
     if (_selectedImage == null) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('請先選擇圖片')));
+      ).showSnackBar(const SnackBar(content: Text('請先選擇明信片圖片')));
       return;
     }
 
@@ -89,7 +89,7 @@ class _AddPostcardPageState extends State<AddPostcardPage> {
     if (coordinates == null) {
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('請輸入正確的座標格式')));
+      ).showSnackBar(const SnackBar(content: Text('請輸入正確座標，格式為 lat, lng')));
       return;
     }
 
@@ -104,6 +104,7 @@ class _AddPostcardPageState extends State<AddPostcardPage> {
         category: _selectedCategory,
         lat: coordinates.lat,
         lng: coordinates.lng,
+        tags: _selectedTags,
         imageFile: _selectedImage!,
       );
 
@@ -131,112 +132,160 @@ class _AddPostcardPageState extends State<AddPostcardPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(title: const Text('新增明信片')),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                AspectRatio(
-                  aspectRatio: 1,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.grey.shade300),
+        child: StreamBuilder<List<String>>(
+          stream: widget.postcardService.watchAvailableTags(),
+          builder: (context, snapshot) {
+            final availableTags = snapshot.data ?? kBuiltInPostcardTags;
+
+            return SingleChildScrollView(
+              keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+              padding: const EdgeInsets.all(20),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      curve: Curves.easeOut,
+                      height: 280,
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerLowest,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: colorScheme.outlineVariant),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: _selectedImageBytes == null
+                            ? Center(
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.photo_library_outlined,
+                                      size: 40,
+                                      color: colorScheme.primary,
+                                    ),
+                                    const SizedBox(height: 10),
+                                    const Text('尚未選擇圖片'),
+                                  ],
+                                ),
+                              )
+                            : Image.memory(
+                                _selectedImageBytes!,
+                                fit: BoxFit.cover,
+                              ),
+                      ),
                     ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: _selectedImageBytes == null
-                          ? const Center(child: Text('尚未選擇圖片'))
-                          : Image.memory(
-                              _selectedImageBytes!,
-                              fit: BoxFit.cover,
-                            ),
+                    const SizedBox(height: 14),
+                    FilledButton.icon(
+                      onPressed: _isSaving ? null : _pickImage,
+                      icon: const Icon(Icons.add_photo_alternate_outlined),
+                      label: const Text('選擇圖片'),
                     ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  onPressed: _isSaving ? null : _pickImage,
-                  icon: const Icon(Icons.photo_library_outlined),
-                  label: const Text('選擇圖片'),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  '免費版會先自動壓縮大圖，並另外產生縮圖。',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 12),
-                SegmentedButton<PostcardCategory>(
-                  segments: const [
-                    ButtonSegment(
-                      value: PostcardCategory.mushroom,
-                      label: Text('菇點'),
+                    const SizedBox(height: 20),
+                    Text(
+                      '先選分類，之後可以在詳情頁再修改。',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
-                    ButtonSegment(
-                      value: PostcardCategory.flower,
-                      label: Text('花點'),
+                    const SizedBox(height: 10),
+                    SegmentedButton<PostcardCategory>(
+                      segments: const [
+                        ButtonSegment(
+                          value: PostcardCategory.mushroom,
+                          label: Text('菇點'),
+                        ),
+                        ButtonSegment(
+                          value: PostcardCategory.flower,
+                          label: Text('花點'),
+                        ),
+                      ],
+                      selected: {_selectedCategory},
+                      onSelectionChanged: _isSaving
+                          ? null
+                          : (selection) {
+                              setState(() {
+                                _selectedCategory = selection.first;
+                              });
+                            },
+                    ),
+                    const SizedBox(height: 16),
+                    PostcardTagEditor(
+                      selectedTags: _selectedTags,
+                      availableTags: availableTags,
+                      enabled: !_isSaving,
+                      onChanged: (tags) {
+                        setState(() {
+                          _selectedTags = tags;
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _nameController,
+                      enabled: !_isSaving,
+                      textInputAction: TextInputAction.next,
+                      decoration: const InputDecoration(
+                        labelText: '名稱',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return '請輸入名稱';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _coordinatesController,
+                      enabled: !_isSaving,
+                      textInputAction: TextInputAction.done,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                        signed: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: '座標',
+                        hintText: '24.1677864409, 120.7028962299',
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return '請輸入座標';
+                        }
+                        if (_parseCoordinates(value) == null) {
+                          return '請輸入正確格式，例如 24.1677864409, 120.7028962299';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      height: 52,
+                      child: FilledButton(
+                        onPressed: _isSaving ? null : _save,
+                        child: _isSaving
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text('儲存'),
+                      ),
                     ),
                   ],
-                  selected: {_selectedCategory},
-                  onSelectionChanged: _isSaving
-                      ? null
-                      : (selection) {
-                          setState(() {
-                            _selectedCategory = selection.first;
-                          });
-                        },
                 ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _nameController,
-                  enabled: !_isSaving,
-                  decoration: const InputDecoration(labelText: '名稱'),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return '請輸入名稱';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _coordinatesController,
-                  enabled: !_isSaving,
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
-                    signed: true,
-                  ),
-                  decoration: const InputDecoration(labelText: '座標'),
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return '請輸入座標';
-                    }
-                    if (_parseCoordinates(value) == null) {
-                      return '格式請使用：24.1677864409, 120.7028962299';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 24),
-                FilledButton(
-                  onPressed: _isSaving ? null : _save,
-                  child: _isSaving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('儲存'),
-                ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         ),
       ),
     );
