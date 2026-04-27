@@ -139,6 +139,15 @@ class Postcard {
     if (value is Uint8List) {
       return value;
     }
+    if (value is List<int>) {
+      return Uint8List.fromList(value);
+    }
+    if (value is List<dynamic>) {
+      final bytes = value.whereType<int>().toList(growable: false);
+      if (bytes.isNotEmpty) {
+        return Uint8List.fromList(bytes);
+      }
+    }
     return null;
   }
 
