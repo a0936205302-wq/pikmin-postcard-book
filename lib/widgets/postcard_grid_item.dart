@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/postcard.dart';
-import 'postcard_image.dart';
+import 'postcard_image_widget.dart';
 
 class PostcardGridItem extends StatelessWidget {
   const PostcardGridItem({
@@ -29,11 +29,12 @@ class PostcardGridItem extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            PostcardImage(
-              postcard: postcard,
+            PostcardImageWidget(
+              imageBytes: postcard.imageBytes,
+              thumbnailBytes: postcard.thumbnailBytes,
               fit: BoxFit.cover,
               expand: true,
-              useThumbnail: true,
+              preferThumbnail: true,
             ),
             if (selected)
               DecoratedBox(

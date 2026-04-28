@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../models/postcard.dart';
 import '../services/map_launcher_service.dart';
 import '../services/postcard_service.dart';
-import '../widgets/postcard_image.dart';
+import '../widgets/postcard_image_widget.dart';
 import '../widgets/postcard_tag_editor.dart';
 
 class DetailPage extends StatefulWidget {
@@ -351,8 +351,9 @@ class _DetailPageState extends State<DetailPage> {
                           minScale: 1,
                           maxScale: 4,
                           child: Center(
-                            child: PostcardImage(
-                              postcard: _postcard,
+                            child: PostcardImageWidget(
+                              imageBytes: _postcard.imageBytes,
+                              thumbnailBytes: _postcard.thumbnailBytes,
                               fit: BoxFit.contain,
                             ),
                           ),

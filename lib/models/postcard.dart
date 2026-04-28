@@ -69,8 +69,8 @@ class Postcard {
   final bool owned;
   final double lat;
   final double lng;
-  final Uint8List? imageBytes;
-  final Uint8List? thumbnailBytes;
+  final Object? imageBytes;
+  final Object? thumbnailBytes;
   final String? imageUrl;
   final DateTime? createdAt;
   final List<String> tags;
@@ -78,10 +78,10 @@ class Postcard {
   String get formattedLat => lat.toStringAsFixed(10);
   String get formattedLng => lng.toStringAsFixed(10);
   String get coordinatesText => '$formattedLat, $formattedLng';
-  bool get hasInlineImage => imageBytes != null && imageBytes!.isNotEmpty;
-  bool get hasThumbnail => thumbnailBytes != null && thumbnailBytes!.isNotEmpty;
+  bool get hasInlineImage => _hasImageValue(imageBytes);
+  bool get hasThumbnail => _hasImageValue(thumbnailBytes);
   bool get hasNetworkImage => (imageUrl ?? '').isNotEmpty;
-  bool get hasImage => hasInlineImage || hasNetworkImage;
+  bool get hasImage => hasInlineImage || hasThumbnail || hasNetworkImage;
 
   Postcard copyWith({
     String? id,
@@ -90,8 +90,8 @@ class Postcard {
     bool? owned,
     double? lat,
     double? lng,
-    Uint8List? imageBytes,
-    Uint8List? thumbnailBytes,
+    Object? imageBytes,
+    Object? thumbnailBytes,
     String? imageUrl,
     DateTime? createdAt,
     List<String>? tags,
@@ -124,20 +124,27 @@ class Postcard {
       owned: (data['owned'] as bool?) ?? false,
       lat: (data['lat'] as num?)?.toDouble() ?? 0,
       lng: (data['lng'] as num?)?.toDouble() ?? 0,
-      imageBytes: _blobToBytes(data['imageBytes']),
-      thumbnailBytes: _blobToBytes(data['thumbnailBytes']),
+      imageBytes: _normalizeImageValue(data['imageBytes']),
+      thumbnailBytes: _normalizeImageValue(data['thumbnailBytes']),
       imageUrl: (data['imageUrl'] as String?)?.trim(),
       createdAt: createdAt is Timestamp ? createdAt.toDate() : null,
       tags: normalizeTags((data['tags'] as List<dynamic>?)?.cast<Object?>()),
     );
   }
 
-  static Uint8List? _blobToBytes(Object? value) {
+  static Object? _normalizeImageValue(Object? value) {
+    if (value == null) {
+      return null;
+    }
     if (value is Blob) {
       return value.bytes;
     }
     if (value is Uint8List) {
       return value;
+    }
+    if (value is String) {
+      final trimmed = value.trim();
+      return trimmed.isEmpty ? null : trimmed;
     }
     if (value is List<int>) {
       return Uint8List.fromList(value);
@@ -149,6 +156,19 @@ class Postcard {
       }
     }
     return null;
+  }
+
+  static bool _hasImageValue(Object? value) {
+    if (value is Uint8List) {
+      return value.isNotEmpty;
+    }
+    if (value is String) {
+      return value.trim().isNotEmpty;
+    }
+    if (value is List<int>) {
+      return value.isNotEmpty;
+    }
+    return false;
   }
 
   static String normalizeTag(String input) {
