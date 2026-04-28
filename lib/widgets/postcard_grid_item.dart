@@ -30,6 +30,8 @@ class PostcardGridItem extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             PostcardImageWidget(
+              postcardId: postcard.id,
+              location: 'grid',
               imageBytes: postcard.imageBytes,
               thumbnailBytes: postcard.thumbnailBytes,
               fit: BoxFit.cover,

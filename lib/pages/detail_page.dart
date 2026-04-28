@@ -352,6 +352,8 @@ class _DetailPageState extends State<DetailPage> {
                           maxScale: 4,
                           child: Center(
                             child: PostcardImageWidget(
+                              postcardId: _postcard.id,
+                              location: 'detail',
                               imageBytes: _postcard.imageBytes,
                               thumbnailBytes: _postcard.thumbnailBytes,
                               fit: BoxFit.contain,

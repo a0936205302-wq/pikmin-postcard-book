@@ -1,11 +1,13 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 class PostcardImageWidget extends StatelessWidget {
   const PostcardImageWidget({
     super.key,
+    required this.postcardId,
+    required this.location,
     this.imageBytes,
     this.thumbnailBytes,
     this.preferThumbnail = false,
@@ -13,6 +15,8 @@ class PostcardImageWidget extends StatelessWidget {
     this.expand = false,
   });
 
+  final String postcardId;
+  final String location;
   final Object? imageBytes;
   final Object? thumbnailBytes;
   final bool preferThumbnail;
@@ -21,17 +25,37 @@ class PostcardImageWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final primaryLabel = preferThumbnail ? 'thumbnailBytes' : 'imageBytes';
+    final fallbackLabel = preferThumbnail ? 'imageBytes' : 'thumbnailBytes';
     final primarySource = preferThumbnail ? thumbnailBytes : imageBytes;
     final fallbackSource = preferThumbnail ? imageBytes : thumbnailBytes;
 
-    final primaryBytes = _decodeToBytes(primarySource);
-    final fallbackBytes = _decodeToBytes(fallbackSource);
-    final resolvedBytes = primaryBytes ?? fallbackBytes;
+    final primaryResult = _decodeToBytes(primaryLabel, primarySource);
+    final fallbackResult = _decodeToBytes(fallbackLabel, fallbackSource);
+    final resolvedResult = primaryResult.bytes != null
+        ? primaryResult
+        : fallbackResult;
+
+    debugPrint(
+      '[PostcardImageWidget] postcardId=$postcardId location=$location',
+    );
+    debugPrint(
+      '[PostcardImageWidget] imageBytes=${_describePresence(imageBytes)} '
+      'thumbnailBytes=${_describePresence(thumbnailBytes)}',
+    );
+    debugPrint(
+      '[PostcardImageWidget] selectedSource='
+      '${resolvedResult.sourceName ?? 'none'}',
+    );
+    _logSourceDetails(primaryResult);
+    if (fallbackLabel != primaryLabel) {
+      _logSourceDetails(fallbackResult);
+    }
 
     Widget child;
-    if (resolvedBytes != null && resolvedBytes.isNotEmpty) {
+    if (resolvedResult.bytes != null && resolvedResult.bytes!.isNotEmpty) {
       child = Image.memory(
-        resolvedBytes,
+        resolvedResult.bytes!,
         fit: fit,
         errorBuilder: (context, error, stackTrace) =>
             const Center(child: Icon(Icons.broken_image, size: 36)),
@@ -47,20 +71,70 @@ class PostcardImageWidget extends StatelessWidget {
     return SizedBox.expand(child: child);
   }
 
-  Uint8List? _decodeToBytes(Object? source) {
+  String _describePresence(Object? source) {
     if (source == null) {
-      return null;
+      return 'null';
+    }
+    if (source is String) {
+      return source.trim().isEmpty ? 'empty' : 'notEmpty';
     }
     if (source is Uint8List) {
-      return source.isEmpty ? null : source;
+      return source.isEmpty ? 'empty' : 'notEmpty';
     }
     if (source is List<int>) {
-      return source.isEmpty ? null : Uint8List.fromList(source);
+      return source.isEmpty ? 'empty' : 'notEmpty';
+    }
+    if (source is List<dynamic>) {
+      return source.isEmpty ? 'empty' : 'notEmpty';
+    }
+    return 'type=${source.runtimeType}';
+  }
+
+  void _logSourceDetails(_DecodedSourceResult result) {
+    debugPrint(
+      '[PostcardImageWidget] ${result.sourceName}: '
+      'base64Length=${result.base64Length ?? 'n/a'} '
+      'base64Head=${result.base64Head ?? 'n/a'} '
+      'strippedLength=${result.strippedLength ?? 'n/a'} '
+      'bytesLength=${result.bytes?.length ?? 'null'}',
+    );
+    if (result.error != null) {
+      debugPrint(
+        '[PostcardImageWidget] ${result.sourceName} decodeError=${result.error}',
+      );
+    }
+    if (result.stackTrace != null) {
+      debugPrint(
+        '[PostcardImageWidget] ${result.sourceName} stackTrace=${result.stackTrace}',
+      );
+    }
+  }
+
+  _DecodedSourceResult _decodeToBytes(String sourceName, Object? source) {
+    if (source == null) {
+      return _DecodedSourceResult(sourceName: sourceName);
+    }
+    if (source is Uint8List) {
+      return _DecodedSourceResult(
+        sourceName: sourceName,
+        bytes: source.isEmpty ? null : source,
+      );
+    }
+    if (source is List<int>) {
+      return _DecodedSourceResult(
+        sourceName: sourceName,
+        bytes: source.isEmpty ? null : Uint8List.fromList(source),
+      );
     }
     if (source is String) {
       final normalized = source.trim();
       if (normalized.isEmpty) {
-        return null;
+        return _DecodedSourceResult(
+          sourceName: sourceName,
+          base64Length: 0,
+          base64Head: '',
+          strippedLength: 0,
+        );
       }
 
       final withoutPrefix = normalized.replaceFirst(
@@ -70,11 +144,44 @@ class PostcardImageWidget extends StatelessWidget {
 
       try {
         final decoded = base64Decode(withoutPrefix);
-        return decoded.isEmpty ? null : decoded;
-      } catch (_) {
-        return null;
+        return _DecodedSourceResult(
+          sourceName: sourceName,
+          base64Length: normalized.length,
+          base64Head: normalized.substring(0, normalized.length.clamp(0, 30)),
+          strippedLength: withoutPrefix.length,
+          bytes: decoded.isEmpty ? null : decoded,
+        );
+      } catch (error, stackTrace) {
+        return _DecodedSourceResult(
+          sourceName: sourceName,
+          base64Length: normalized.length,
+          base64Head: normalized.substring(0, normalized.length.clamp(0, 30)),
+          strippedLength: withoutPrefix.length,
+          error: error,
+          stackTrace: stackTrace,
+        );
       }
     }
-    return null;
+    return _DecodedSourceResult(sourceName: sourceName);
   }
+}
+
+class _DecodedSourceResult {
+  const _DecodedSourceResult({
+    required this.sourceName,
+    this.base64Length,
+    this.base64Head,
+    this.strippedLength,
+    this.bytes,
+    this.error,
+    this.stackTrace,
+  });
+
+  final String? sourceName;
+  final int? base64Length;
+  final String? base64Head;
+  final int? strippedLength;
+  final Uint8List? bytes;
+  final Object? error;
+  final StackTrace? stackTrace;
 }
